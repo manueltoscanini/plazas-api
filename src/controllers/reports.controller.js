@@ -13,7 +13,16 @@ const EXISTS_FLAG = {
   Hazard: 'hazards.exists',
 };
 const KEY_RE = /^(add|modify|delete)(WC|Playground|Ramp|Hazard)$/;
+const PIC_RE = /^(add|delete)Picture$/;
 const FIELDS = ['description', 'picture', 'lat', 'lon', 'accessible'];
+
+// Solo se aceptan imagenes subidas a nuestra cuenta de Cloudinary
+function isOurImage(url) {
+  return (
+    typeof url === 'string' &&
+    url.startsWith(`https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/`)
+  );
+}
 
 function pick(data) {
   const out = {};
@@ -26,15 +35,24 @@ function validateChanges(changes) {
     return 'changes debe ser un objeto con al menos un cambio';
   }
   for (const [key, data] of Object.entries(changes)) {
+    if (!data || typeof data !== 'object') return `${key} debe ser un objeto`;
+
+    if (PIC_RE.test(key)) {
+      if (!isOurImage(data.url)) return `${key} requiere la url de una imagen subida a la app`;
+      continue;
+    }
+
     const m = key.match(KEY_RE);
     if (!m) return `Cambio desconocido: ${key}`;
-    if (!data || typeof data !== 'object') return `${key} debe ser un objeto`;
+    if (data.picture && !isOurImage(data.picture)) {
+      return `${key}: la foto debe subirse primero a la app`;
+    }
     if (m[1] === 'add') {
       if (typeof data.lat !== 'number' || typeof data.lon !== 'number') {
-        return `${key} requiere lat y lon numéricos`;
+        return `${key} requiere lat y lon numÃ©ricos`;
       }
     } else if (!mongoose.isValidObjectId(data.id)) {
-      return `${key} requiere un id válido`;
+      return `${key} requiere un id vÃ¡lido`;
     }
   }
   return null;
@@ -46,6 +64,15 @@ async function applyChanges(report) {
   const touched = new Set();
 
   for (const [key, data] of Object.entries(report.changes)) {
+    if (PIC_RE.test(key)) {
+      if (key === 'addPicture') {
+        await Square.findByIdAndUpdate(squareId, { $addToSet: { pictures: data.url } });
+      } else {
+        await Square.findByIdAndUpdate(squareId, { $pull: { pictures: data.url } });
+      }
+      continue;
+    }
+
     const [, action, type] = key.match(KEY_RE);
     const Model = MODELS[type];
     touched.add(type);
@@ -68,7 +95,9 @@ async function applyChanges(report) {
     const count = await MODELS[type].countDocuments({ publicSquareId: squareId });
     update[EXISTS_FLAG[type]] = count > 0;
   }
-  await Square.findByIdAndUpdate(squareId, { $set: update });
+  if (Object.keys(update).length) {
+    await Square.findByIdAndUpdate(squareId, { $set: update });
+  }
 }
 
 // Pasa un reporte de pending a approved/rejected de forma atomica
@@ -86,7 +115,7 @@ exports.create = async (req, res) => {
   try {
     const { publicSquareId, changes } = req.body;
     if (!mongoose.isValidObjectId(publicSquareId)) {
-      return res.status(400).json({ message: 'publicSquareId inválido' });
+      return res.status(400).json({ message: 'publicSquareId invï¿½lido' });
     }
     const error = validateChanges(changes);
     if (error) return res.status(400).json({ message: error });
@@ -108,7 +137,7 @@ exports.listPending = async (req, res) => {
     const filter = { status: 'pending' };
     if (req.query.squareId) {
       if (!mongoose.isValidObjectId(req.query.squareId)) {
-        return res.status(400).json({ message: 'squareId inválido' });
+        return res.status(400).json({ message: 'squareId invï¿½lido' });
       }
       filter.publicSquareId = req.query.squareId;
     }
@@ -125,13 +154,13 @@ function voteHandler(isUpvote) {
     try {
       const { reportId } = req.body;
       if (!mongoose.isValidObjectId(reportId)) {
-        return res.status(400).json({ message: 'reportId inválido' });
+        return res.status(400).json({ message: 'reportId invï¿½lido' });
       }
       const report = await Report.findById(reportId);
       if (!report) return res.status(404).json({ message: 'Reporte no encontrado' });
       if (report.status !== 'pending') return res.status(409).json({ message: 'El reporte ya fue resuelto' });
       if (report.userId.equals(req.user.id)) {
-        return res.status(403).json({ message: 'No podés votar tu propio reporte' });
+        return res.status(403).json({ message: 'No podï¿½s votar tu propio reporte' });
       }
 
       const add = isUpvote ? 'autoApprovedBy' : 'autoRejectedBy';
@@ -169,7 +198,7 @@ exports.approve = async (req, res) => {
   try {
     const { reportId } = req.body;
     if (!mongoose.isValidObjectId(reportId)) {
-      return res.status(400).json({ message: 'reportId inválido' });
+      return res.status(400).json({ message: 'reportId invï¿½lido' });
     }
     const report = await resolve(reportId, 'approved', { approvedBy: req.user.id });
     if (!report) return res.status(409).json({ message: 'El reporte no existe o ya fue resuelto' });
@@ -185,7 +214,7 @@ exports.reject = async (req, res) => {
   try {
     const { reportId } = req.body;
     if (!mongoose.isValidObjectId(reportId)) {
-      return res.status(400).json({ message: 'reportId inválido' });
+      return res.status(400).json({ message: 'reportId invï¿½lido' });
     }
     const report = await resolve(reportId, 'rejected', { rejectedBy: req.user.id });
     if (!report) return res.status(409).json({ message: 'El reporte no existe o ya fue resuelto' });
