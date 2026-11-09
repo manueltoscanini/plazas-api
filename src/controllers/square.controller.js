@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 const Square = require('../models/PublicSquare');
+const { WC, Playground, Ramp, Hazard } = require('../models/elements');
+
 
 // Distancia en km entre dos puntos (formula de Haversine)
 function distanceKm(lat1, lon1, lat2, lon2) {
@@ -59,11 +61,20 @@ exports.list = async (req, res) => {
 exports.getById = async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {
-      return res.status(400).json({ message: 'ID inválido' });
+      return res.status(400).json({ message: 'ID invÃ¡lido' });
     }
-    const square = await Square.findById(req.params.id);
+    const square = await Square.findById(req.params.id).lean();
     if (!square) return res.status(404).json({ message: 'Plaza no encontrada' });
-    res.json(square);
+
+    const q = { publicSquareId: square._id };
+    const [wcs, playgrounds, ramps, hazards] = await Promise.all([
+      WC.find(q).lean(),
+      Playground.find(q).lean(),
+      Ramp.find(q).lean(),
+      Hazard.find(q).lean(),
+    ]);
+
+    res.json({ ...square, elements: { wcs, playgrounds, ramps, hazards } });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -83,7 +94,7 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {
-      return res.status(400).json({ message: 'ID inválido' });
+      return res.status(400).json({ message: 'ID invï¿½lido' });
     }
     const square = await Square.findByIdAndUpdate(
       req.params.id,
