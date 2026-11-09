@@ -9,5 +9,6 @@ app.use(express.json());
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
 app.use('/api/users', require('./routes/users.routes'));
+app.use('/api/square', require('./routes/square.routes'));
 
 module.exports = app;
